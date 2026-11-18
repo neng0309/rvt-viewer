@@ -26,7 +26,7 @@
     background:var(--panel);border:0;border-radius:10px;padding:9px 12px;backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18);cursor:pointer}
   #pick:focus-visible{outline:2px solid var(--accent)}
   #pick:disabled{cursor:default;opacity:.75}
-  #info{position:fixed;right:12px;top:58px;width:min(340px,calc(100vw - 24px));max-height:calc(100vh - 150px);overflow:auto;
+  #info{position:fixed;right:12px;top:58px;width:min(340px,calc(100vw - 24px));max-height:calc(100vh - 205px);overflow:auto;
     background:var(--panel);backdrop-filter:blur(8px);border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.18);font-size:13px;line-height:1.45}
   #info[hidden]{display:none}
   #info header{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;padding:12px 8px 8px 12px;position:sticky;top:0;background:var(--panel)}
@@ -40,6 +40,28 @@
   #info details{border-top:1px solid rgba(127,127,127,.25)}
   #info summary{cursor:pointer;padding:8px 12px;font-weight:600}
   #info details .rows{padding-top:2px}
+  #tag{position:fixed;left:0;top:0;z-index:6;pointer-events:none;display:none;min-width:150px;max-width:260px;padding:8px 11px;border-radius:10px;
+    background:var(--panel);backdrop-filter:blur(8px);box-shadow:0 2px 14px rgba(0,0,0,.28);border:1px solid var(--accent);font-size:12.5px;line-height:1.45}
+  #tag::after{content:"";position:absolute;left:50%;bottom:-7px;width:12px;height:12px;background:var(--panel);border:solid var(--accent);border-width:0 1px 1px 0;transform:translateX(-50%) rotate(45deg)}
+  #tag b{display:block;font-size:13px;margin-bottom:3px;word-break:break-word}
+  #tag .z{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
+  #tag .z span:first-child{opacity:.7}
+  #tag .z span:last-child{font-weight:600;color:var(--accent)}
+  #tag .d{margin-top:3px;padding-top:3px;border-top:1px solid rgba(127,127,127,.3);opacity:.85;word-break:break-word}
+  #hid{position:fixed;left:64px;top:10px;z-index:6;width:min(280px,calc(100vw - 80px));max-height:60vh;overflow:auto;padding:6px;border-radius:12px;
+    background:var(--panel);backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18);font-size:13px}
+  #hid[hidden]{display:none}
+  #hid h4{margin:4px 6px 6px;font-size:13px}
+  #hid button{display:flex;width:100%;gap:8px;align-items:center;justify-content:space-between;border:0;background:transparent;color:inherit;font:inherit;text-align:left;
+    padding:6px 8px;border-radius:7px;cursor:pointer}
+  #hid button:hover{background:rgba(127,127,127,.22)}
+  #hid button span:first-child{word-break:break-word}
+  #hid button span:last-child{color:var(--accent);white-space:nowrap}
+  #hid p{margin:6px;opacity:.65}
+  .tool .cnt{position:absolute;right:1px;top:1px;min-width:15px;height:15px;border-radius:8px;background:var(--accent);color:#fff;font-size:10px;line-height:15px;text-align:center;display:none;padding:0 3px}
+  #gizmo{position:fixed;right:12px;bottom:12px;width:120px;height:120px;z-index:4;border-radius:14px;cursor:pointer;touch-action:none;
+    background:var(--panel);backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18)}
+  body.ui0 #gizmo{display:none}
   #hint{position:fixed;left:12px;bottom:10px;font-size:12px;opacity:.7;pointer-events:none}
   #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;pointer-events:none}
   #msg b{font-size:20px} #msg span{opacity:.7;font-size:14px;max-width:420px;line-height:1.5}
@@ -49,6 +71,7 @@
   body.ui0 .bar,body.ui0 #pick,body.ui0 #hint{display:none}
   @media (max-width:600px){
     #info{top:auto;bottom:12px;left:12px;right:12px;width:auto;max-height:45vh}
+    #gizmo{bottom:auto;top:56px;width:96px;height:96px}
     #hint{display:none}
   }
 </style>
@@ -62,12 +85,19 @@
   <button class="tool" id="b-axis" data-tip="สลับแกน Z/Y (ถ้าโมเดลนอนตะแคง)" aria-label="สลับแกน Z/Y" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg></button>
   <button class="tool" id="b-sec" data-tip="Section Box: ครอบโมเดล ลากจุดเพื่อรูดเข้า/ออก" aria-label="Section Box" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5" stroke-dasharray="3 2.4"/><path d="M12 8v8M9.5 10.5L12 8l2.5 2.5M9.5 13.5L12 16l2.5-2.5"/></svg></button>
   <button class="tool" id="b-wire" data-tip="โหมดเส้นลวด (Wireframe)" aria-label="Wireframe" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <button class="tool" id="b-hide" data-tip="ซ่อนชิ้นงานที่เลือก (H)" aria-label="Hide"><svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 8.5 4.2 9.5 6a14 14 0 0 1-2.9 3.5M6.5 7.6A14 14 0 0 0 2.5 12C3.5 13.8 7 18 12 18c1.5 0 2.8-.4 4-1M9.9 9.900a3 3 0 0 0 4.2 4.2"/></svg></button>
+  <button class="tool" id="b-unhide" data-tip="Unhide: เลือกชิ้นงานที่ซ่อนไว้เพื่อแสดงกลับ" aria-label="Unhide" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M2.5 12C3.5 10.2 7 6 12 6s8.5 4.2 9.5 6c-1 1.8-4.5 6-9.5 6s-8.5-4.2-9.5-6z"/><circle cx="12" cy="12" r="3"/></svg><i class="cnt" id="hid-cnt"></i></button>
+  <button class="tool" id="b-unhall" data-tip="Unhide All: แสดงทุกชิ้นงานที่ซ่อน (Shift+H)" aria-label="Unhide All"><svg viewBox="0 0 24 24"><path d="M1.5 12C2.5 10.2 6 6 11 6s8.5 4.2 9.5 6c-1 1.8-4.5 6-9.5 6s-8.5-4.2-9.5-6z"/><circle cx="11" cy="12" r="2.5"/><path d="M19 16v6M16 19h6" /></svg></button>
+  <button class="tool" id="b-tag" data-tip="แสดง/ซ่อน Tag (ชื่อ · ระดับ TOP/BOTTOM · Description)" aria-label="Tag" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M3 12.5V4h8.5L20 12.5 12.5 20z"/><circle cx="8" cy="8.5" r="1.3"/></svg></button>
   <button class="tool" id="b-link" data-tip="คัดลอกลิงก์แชร์" aria-label="คัดลอกลิงก์แชร์"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
 </div>
 <aside id="info" hidden>
   <header><div><div id="info-title"></div><span id="info-badge"></span></div><button id="info-close" aria-label="ปิด">×</button></header>
   <div id="info-body"></div>
 </aside>
+<canvas id="gizmo" title="แกนของโมเดล · คลิกปลายแกนเพื่อมองตามแกนนั้น (Z = Top view)"></canvas>
+<div id="tag"></div>
+<div id="hid" hidden></div>
 <div id="hint"></div>
 <div id="msg"><b>เลือกโครงการจากเมนูมุมขวาบน</b><span>โมเดลอ่านจากโฟลเดอร์ models ใน GitHub (รองรับ .ifc .fbx .obj .glb)</span></div>
 <div id="drop">วางไฟล์เพื่อดูตัวอย่าง</div>
@@ -92,10 +122,11 @@ const WEBIFC_BASE = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/';
 // ==IFC-START==
 // อ่านไฟล์ IFC -> THREE.Group (รวมเมชตามสี) + ตารางหา expressID จากสามเหลี่ยม
 async function parseIfc(THREE, api, WebIFC, data) {
-  const modelID = api.OpenModel(data, { COORDINATE_TO_ORIGIN: true });
+  const modelID = api.OpenModel(data, { COORDINATE_TO_ORIGIN: false });
   if (modelID < 0) throw new Error('open failed');
   const groups = new Map(); // colorKey -> {color, opacity, pos:[], nor:[], idx:[], ids:[], vcount, ranges}
   const ranges = new Map(); // expressID -> [{key,start,count}]
+  let OX = null, OY = 0; // ย้ายจุดกำเนิดเฉพาะแกน X/Y (คงค่า Z จริงไว้ เพื่ออ่านค่าระดับ)
   api.StreamAllMeshes(modelID, (mesh) => {
     const pid = mesh.expressID;
     const n = mesh.geometries.size();
@@ -114,8 +145,10 @@ async function parseIfc(THREE, api, WebIFC, data) {
       for (let v = 0; v < vc; v++) {
         const x = verts[v*6], y = verts[v*6+1], z = verts[v*6+2];
         const nx = verts[v*6+3], ny = verts[v*6+4], nz = verts[v*6+5];
-        P[v*3]   = m[0]*x + m[4]*y + m[8]*z  + m[12];
-        P[v*3+1] = m[1]*x + m[5]*y + m[9]*z  + m[13];
+        const wx = m[0]*x + m[4]*y + m[8]*z  + m[12], wy = m[1]*x + m[5]*y + m[9]*z  + m[13];
+        if (OX === null) { OX = wx; OY = wy; }
+        P[v*3]   = wx - OX;
+        P[v*3+1] = wy - OY;
         P[v*3+2] = m[2]*x + m[6]*y + m[10]*z + m[14];
         N[v*3]   = m[0]*nx + m[4]*ny + m[8]*nz;
         N[v*3+1] = m[1]*nx + m[5]*ny + m[9]*nz;
@@ -149,8 +182,29 @@ async function parseIfc(THREE, api, WebIFC, data) {
     mesh.userData.ifcMesh = true;
     root.add(mesh); meshes.set(key, mesh);
   }
-  return { root, modelID, ranges, meshes };
+  return { root, modelID, ranges, meshes, origin: [OX || 0, OY || 0] };
 }
+
+// ค่าระดับจริง (เมตร) TOP/BOTTOM ของชิ้นส่วน จากพิกัด Z ของเมชใน IFC
+const origIdx = (ifc, mesh) => {
+  if (!ifc.orig) ifc.orig = new Map();
+  if (!ifc.orig.has(mesh)) ifc.orig.set(mesh, mesh.geometry.index.array);
+  return ifc.orig.get(mesh);
+};
+function ifcBounds(ifc, id) {
+  let zmin = Infinity, zmax = -Infinity, xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  for (const r of ifc.ranges.get(id) || []) {
+    const mesh = ifc.meshes.get(r.key), geo = mesh.geometry, idx = origIdx(ifc, mesh), pos = geo.attributes.position.array;
+    for (let k = r.start; k < r.start + r.count; k++) {
+      const v = idx[k] * 3, x = pos[v], y = pos[v+1], z = pos[v+2];
+      if (z < zmin) zmin = z; if (z > zmax) zmax = z;
+      if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+    }
+  }
+  return zmin === Infinity ? null : { top: zmax, bot: zmin, cx: (xmin + xmax) / 2, cy: (ymin + ymax) / 2 };
+}
+const fmtZ = v => (v >= 0 ? '+' : '') + v.toFixed(3);
 
 // ข้อมูลชิ้นส่วน: ชนิด ชื่อ ชั้น Property Sets
 function ifcVal(x) {
@@ -190,7 +244,7 @@ function getIfcInfo(api, modelID, id, idx) {
   const el = L(id);
   if (!el) return null;
   const cls = api.GetNameFromTypeCode(el.type) || '';
-  const info = { cls, name: ifcVal(el.Name), rows: [], groups: [] };
+  const info = { cls, name: ifcVal(el.Name), desc: ifcVal(el.Description), rows: [], groups: [] };
   const add = (k, v) => { v = ifcVal(v); if (v !== '') info.rows.push([k, v]); };
   add('ชนิด', cls);
   add('ชื่อ', el.Name);
@@ -294,6 +348,62 @@ function fit() {
   camera.lookAt(c); controls.update(); resize();
 }
 
+// ---------- แกน X Y Z (มุมขวาล่าง) ----------
+const gz = $('gizmo'), gctx = gz.getContext('2d');
+const GAX = [{n: 'X', c: '#e5484d', v: new THREE.Vector3(1, 0, 0)}, {n: 'Y', c: '#30a46c', v: new THREE.Vector3(0, 1, 0)}, {n: 'Z', c: '#3e63dd', v: new THREE.Vector3(0, 0, 1)}];
+const gQm = new THREE.Quaternion(), gQc = new THREE.Quaternion(), gEnds = [];
+let gAnim = null;
+function drawGizmo() {
+  const W = gz.clientWidth, H = gz.clientHeight, dpr = Math.min(devicePixelRatio, 2);
+  if (!W) return;
+  if (gz.width !== W * dpr) { gz.width = W * dpr; gz.height = H * dpr; }
+  gctx.setTransform(dpr, 0, 0, dpr, 0, 0); gctx.clearRect(0, 0, W, H);
+  gEnds.length = 0;
+  if (!model) return;
+  model.getWorldQuaternion(gQm); camera.getWorldQuaternion(gQc).invert();
+  const cx = W / 2, cy = H / 2, L = W * .34, R = W * .09;
+  const items = [];
+  for (const a of GAX) for (const sgn of [1, -1]) {
+    const d = a.v.clone().multiplyScalar(sgn).applyQuaternion(gQm), w = d.clone(); // ทิศในโลก
+    d.applyQuaternion(gQc);
+    items.push({a, sgn, w, x: cx + d.x * L, y: cy - d.y * L, z: d.z});
+  }
+  items.sort((p, q) => p.z - q.z);
+  gctx.lineCap = 'round'; gctx.textAlign = 'center'; gctx.textBaseline = 'middle';
+  for (const it of items) {
+    const pos = it.sgn > 0, f = it.z < -.2 && pos ? .75 : 1;
+    gctx.globalAlpha = pos ? f : .45;
+    gctx.strokeStyle = it.a.c; gctx.lineWidth = pos ? 2.5 : 1.5;
+    gctx.beginPath(); gctx.moveTo(cx, cy); gctx.lineTo(it.x, it.y); gctx.stroke();
+    gctx.fillStyle = it.a.c; gctx.beginPath(); gctx.arc(it.x, it.y, pos ? R : R * .62, 0, 7); gctx.fill();
+    if (pos) { gctx.fillStyle = '#fff'; gctx.font = '700 ' + Math.round(R * 1.35) + 'px system-ui,sans-serif'; gctx.fillText(it.a.n, it.x, it.y + .5); }
+    gEnds.push(it);
+  }
+  gctx.globalAlpha = 1;
+}
+function snapView(wdir) {
+  if (!model) return;
+  const t = controls.target, dist = Math.max(camera.position.distanceTo(t), size * .05);
+  const to = wdir.clone().normalize();
+  if (Math.abs(to.y) > .999) to.z += to.y > 0 ? .002 : -.002; // มองตรงบน/ล่าง: ให้ทิศเหนืออยู่บนจอ
+  to.normalize();
+  gAnim = {t0: performance.now(), from: camera.position.clone().sub(t).normalize(), to, dist};
+}
+function stepSnap() {
+  if (!gAnim) return;
+  const k = Math.min(1, (performance.now() - gAnim.t0) / 280), e = k * k * (3 - 2 * k), t = controls.target;
+  const d = gAnim.from.clone().lerp(gAnim.to, e).normalize();
+  camera.position.copy(t).addScaledVector(d, gAnim.dist); camera.lookAt(t); controls.update();
+  if (k >= 1) gAnim = null;
+}
+gz.addEventListener('pointerdown', e => e.stopPropagation());
+gz.addEventListener('click', e => {
+  const r = gz.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  let best = null, bd = 16;
+  for (const it of gEnds) { const d = Math.hypot(it.x - px, it.y - py); if (d < bd) { bd = d; best = it; } }
+  if (best) snapView(best.w);
+});
+
 function setOrtho(on) {
   const t = controls.target.clone();
   if (on) {
@@ -383,7 +493,27 @@ function stepZoom(dt) {
 const hlMat = new THREE.MeshBasicMaterial({color: 0xffb21e, transparent: true, opacity: .8, side: THREE.DoubleSide,
   polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false});
 let hlObjs = [], ovCache = new Map(), selToken = 0;
-function clearHighlight() { hlObjs.forEach(o => o.parent && o.parent.remove(o)); hlObjs = []; }
+function clearHighlight() { hlObjs.forEach(o => o.parent && o.parent.remove(o)); hlObjs = []; sel = null; $('tag').style.display = 'none'; }
+// ---------- Tag ลอยบนชิ้นงาน ----------
+let sel = null; const tagV = new THREE.Vector3();
+function buildTag(d) {
+  const t = $('tag'); t.replaceChildren();
+  const b = document.createElement('b'); b.textContent = d.name || '(ไม่มีชื่อ)'; t.append(b);
+  const row = (k, v) => { const r = document.createElement('div'); r.className = 'z';
+    const a = document.createElement('span'), c = document.createElement('span'); a.textContent = k; c.textContent = v; r.append(a, c); t.append(r); };
+  if (d.top !== undefined) { row('ระดับ TOP', fmtZ(d.top) + ' ม.'); row('ระดับ BOTTOM', fmtZ(d.bot) + ' ม.'); }
+  const dd = document.createElement('div'); dd.className = 'd'; dd.textContent = 'Description: ' + (d.desc || '-'); t.append(dd);
+}
+function updateTag() {
+  const t = $('tag');
+  if (!sel || !isOn('b-tag') || !model) { t.style.display = 'none'; return; }
+  tagV.set(sel.cx, sel.cy, sel.top); sel.root.localToWorld(tagV); tagV.project(camera);
+  if (tagV.z > 1 || tagV.z < -1) { t.style.display = 'none'; return; }
+  const x = (tagV.x * .5 + .5) * innerWidth, y = (-tagV.y * .5 + .5) * innerHeight;
+  t.style.display = 'block';
+  t.style.transform = `translate(${Math.round(clamp(x - t.offsetWidth / 2, 6, innerWidth - t.offsetWidth - 6))}px,${Math.round(Math.max(6, y - t.offsetHeight - 12))}px)`;
+  t.style.setProperty('--ax', '50%');
+}
 function addOverlay(parent, geo) {
   const m = new THREE.Mesh(geo, hlMat); m.raycast = () => {}; m.renderOrder = 2;
   parent.add(m); hlObjs.push(m);
@@ -394,7 +524,7 @@ function highlightIfc(id) {
     geos = (ifc.ranges.get(id) || []).map(r => {
       const src = ifc.meshes.get(r.key).geometry, g = new THREE.BufferGeometry();
       g.setAttribute('position', src.attributes.position); g.setAttribute('normal', src.attributes.normal);
-      g.setIndex(new THREE.BufferAttribute(src.index.array.slice(r.start, r.start + r.count), 1));
+      g.setIndex(new THREE.BufferAttribute(origIdx(ifc, ifc.meshes.get(r.key)).slice(r.start, r.start + r.count), 1));
       return g;
     });
     ovCache.set(id, geos);
@@ -435,14 +565,68 @@ function genericInfo(o) {
   return {title: o.name || (o.parent && o.parent.name) || 'Object', badge: o.type, rows, groups: udRows.length ? [{name: 'ข้อมูลเพิ่มเติม', rows: udRows}] : []};
 }
 
+// ---------- ซ่อน / แสดง ----------
+let cur = null;                 // ชิ้นงานที่เลือกอยู่ {kind,id|obj,name}
+const hidden = new Map();       // key -> {kind,id|obj,name}
+function applyHidden() {
+  if (ifc) {
+    const byKey = new Map();
+    for (const [, h] of hidden) if (h.kind === 'ifc') for (const r of ifc.ranges.get(h.id) || []) {
+      if (!byKey.has(r.key)) byKey.set(r.key, []); byKey.get(r.key).push(r);
+    }
+    for (const [key, mesh] of ifc.meshes) {
+      const orig = origIdx(ifc, mesh), rs = (byKey.get(key) || []).sort((a, b) => a.start - b.start);
+      let out;
+      if (!rs.length) out = orig;
+      else {
+        let cut = 0; for (const r of rs) cut += r.count;
+        out = new orig.constructor(orig.length - cut); let p = 0, q = 0;
+        for (const r of rs) { out.set(orig.subarray(q, r.start), p); p += r.start - q; q = r.start + r.count; }
+        out.set(orig.subarray(q), p);
+      }
+      if (mesh.geometry.index.array !== out) { mesh.geometry.dispose(); mesh.geometry.setIndex(new THREE.BufferAttribute(out, 1)); }
+    }
+  }
+  for (const [, h] of hidden) if (h.kind === 'obj') h.obj.visible = false;
+  const n = hidden.size, c = $('hid-cnt'); c.textContent = n; c.style.display = n ? 'block' : 'none';
+  renderHid();
+}
+function renderHid() {
+  const p = $('hid'); p.replaceChildren();
+  const h = document.createElement('h4'); h.textContent = 'ชิ้นงานที่ซ่อนอยู่ (' + hidden.size + ')'; p.append(h);
+  if (!hidden.size) { const e = document.createElement('p'); e.textContent = 'ยังไม่มีชิ้นงานที่ซ่อน'; p.append(e); }
+  for (const [k, v] of hidden) {
+    const b = document.createElement('button'), a = document.createElement('span'), c = document.createElement('span');
+    a.textContent = v.name || '(ไม่มีชื่อ)'; c.textContent = 'แสดง'; b.append(a, c);
+    b.onclick = () => unhideOne(k); p.append(b);
+  }
+}
+function unhideOne(k) { const h = hidden.get(k); if (!h) return; if (h.kind === 'obj') h.obj.visible = true; hidden.delete(k); applyHidden(); }
+function unhideAll() { for (const [, h] of hidden) if (h.kind === 'obj') h.obj.visible = true; hidden.clear(); applyHidden(); $('hid').hidden = true; setPressed('b-unhide', false); }
+function hideCurrent() {
+  if (!cur) return;
+  const k = cur.kind === 'ifc' ? 'i' + cur.id : 'o' + cur.obj.uuid;
+  hidden.set(k, cur);
+  selToken++; clearHighlight(); hideInfo(); cur = null;
+  applyHidden();
+}
+$('b-hide').onclick = hideCurrent;
+$('b-unhide').onclick = () => { const on = !isOn('b-unhide'); setPressed('b-unhide', on); renderHid(); $('hid').hidden = !on; };
+$('b-unhall').onclick = unhideAll;
+addEventListener('keydown', e => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'H') unhideAll(); else if (e.key === 'h') hideCurrent();
+});
+
 async function selectHit(hit) {
   const token = ++selToken;
-  clearHighlight();
+  clearHighlight(); cur = null;
   if (!hit) { hideInfo(); return; }
   const o = hit.object;
   if (ifc && o.userData.ifcMesh) {
     const id = o.geometry.attributes.expressId.getX(hit.face.a);
     highlightIfc(id);
+    cur = {kind: 'ifc', id, name: ''};
     if (!ifc.index) {
       showInfo({title: 'กำลังอ่านข้อมูล…', rows: []});
       await new Promise(r => setTimeout(r, 30));
@@ -451,9 +635,17 @@ async function selectHit(hit) {
     }
     const i = getIfcInfo(ifc.api, ifc.modelID, id, ifc.index);
     if (token !== selToken) return;
+    const bd = ifcBounds(ifc, id);
+    if (i && bd) {
+      const at = Math.max(1, i.rows.findIndex(r => r[0] === 'ชื่อ') + 1);
+      i.rows.splice(at, 0, ['ระดับ TOP (ม.)', fmtZ(bd.top)], ['ระดับ BOTTOM (ม.)', fmtZ(bd.bot)], ['ความสูง/หนา (ม.)', (bd.top - bd.bot).toFixed(3)]);
+    }
     showInfo(i ? {title: i.name || i.cls, badge: i.cls, rows: i.rows, groups: i.groups} : {title: 'Express ID ' + id, rows: []});
+    if (cur && cur.id === id) cur.name = (i && (i.name || i.cls)) || ('Express ID ' + id);
+    if (i) { sel = Object.assign({root: ifc.root}, bd || {cx: 0, cy: 0, top: 0}); buildTag({name: i.name || i.cls, desc: i.desc, top: bd && bd.top, bot: bd && bd.bot}); if (!bd) sel = null; }
   } else {
     addOverlay(o, o.geometry);
+    cur = {kind: 'obj', obj: o, name: o.name || (o.parent && o.parent.name) || 'Object'};
     showInfo(genericInfo(o));
   }
 }
@@ -552,7 +744,7 @@ function disposeCurrent() {
   }
   ovCache.forEach(gs => gs.forEach(g => g.dispose())); ovCache = new Map();
   if (ifc) { try { ifc.api.CloseModel(ifc.modelID); } catch {} }
-  model = null; ifc = null;
+  model = null; ifc = null; hidden.clear(); cur = null; $('hid-cnt').style.display = 'none'; $('hid').hidden = true; setPressed('b-unhide', false);
 }
 
 function show(obj, name, opts = {}) {
@@ -571,19 +763,37 @@ function show(obj, name, opts = {}) {
 }
 
 const ext = n => (n.split('?')[0].split('.').pop() || '').toLowerCase();
-const fail = name => { $('bar-progress').style.width = '0';
-  msg('เปิดโมเดลไม่ได้', 'ตรวจสอบว่าไฟล์ ' + name + ' อยู่ในโฟลเดอร์ models และพิมพ์ชื่อถูกต้อง (ตัวพิมพ์เล็ก/ใหญ่มีผล)'); };
+const fail = (name, err) => { $('bar-progress').style.width = '0'; if (err) console.error(err);
+  msg('เปิดโมเดลไม่ได้', 'ไฟล์ ' + name + (err ? ' — สาเหตุ: ' + (err.message || err) : '') + ' | ตรวจสอบว่าไฟล์อยู่ในโฟลเดอร์ models, ชื่อถูกต้อง, และ push ขึ้น GitHub ครบ (ไฟล์ >100MB อัปโหลดตรง ๆ ไม่ได้)'); };
 const prog = (got, total) => { if (total) $('bar-progress').style.width = Math.min(100, got / total * 100) + '%'; };
 const done = (o, name) => { $('bar-progress').style.width = '0'; show(o, name); };
 
-async function fetchBuf(url) {
-  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+async function fetchOne(url) {
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url);
   const total = +r.headers.get('content-length') || 0;
   if (!r.body || !total) return r.arrayBuffer();
   const rd = r.body.getReader(), chunks = []; let got = 0;
   for (;;) { const {done, value} = await rd.read(); if (done) break; chunks.push(value); got += value.length; prog(got, total); }
   const out = new Uint8Array(got); let p = 0; for (const c of chunks) { out.set(c, p); p += c.length; }
   return out.buffer;
+}
+// ลองหลาย URL: ชื่อปกติ, Unicode NFC/NFD (ชื่อภาษาไทย/สระซ้อนอาจต่างกัน), และลิงก์ดาวน์โหลดจาก GitHub
+async function fetchBuf(url) {
+  const parts = url.split('/'), file = decodeURIComponent(parts.pop()), dir = parts.join('/');
+  const c = [url];
+  for (const f of ['NFC', 'NFD']) c.push(dir + '/' + encodeURIComponent(file.normalize(f)));
+  const gh = guessRepo();
+  if (gh) {
+    const b = gh.branch || 'main';
+    if (dlMap[file]) c.push(dlMap[file]);
+    c.push(`https://cdn.jsdelivr.net/gh/${gh.owner}/${gh.repo}@${b}/${gh.folder}/${encodeURIComponent(file)}`);
+    c.push(`https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${b}/${gh.folder}/${encodeURIComponent(file)}`);
+  }
+  let last;
+  for (const u of [...new Set(c)]) {
+    try { const buf = await fetchOne(u); if (buf.byteLength > 0) return buf; } catch (e) { last = e; console.warn('โหลดไม่ได้', u, e); }
+  }
+  throw last || new Error('ไม่พบไฟล์');
 }
 
 let ifcApiP = null;
@@ -605,14 +815,14 @@ async function loadIfcBuffer(buf, name) {
     show(r.root, name, {zup: true, ifc: {api, WebIFC, modelID: r.modelID, ranges: r.ranges, meshes: r.meshes, root: r.root, index: null}});
   } catch (e) {
     console.error(e); $('bar-progress').style.width = '0';
-    msg('อ่านไฟล์ IFC ไม่ได้', String(e && e.message || e));
+    msg('อ่านไฟล์ IFC ไม่ได้', String(e && e.message || e) + ' (เปิดด้วย F12 > Console เพื่อดูรายละเอียด)');
   }
 }
 
 function loadUrl(url) {
   const name = decodeURIComponent(url.split('/').pop().split('?')[0]);
   const e = ext(url);
-  if (e === 'ifc') { fetchBuf(url).then(b => loadIfcBuffer(b, name), () => fail(name)); return; }
+  if (e === 'ifc') { fetchBuf(url).then(b => loadIfcBuffer(b, name), e => fail(name, e)); return; }
   const onP = ev => prog(ev.loaded, ev.total);
   if (e === 'fbx') new FBXLoader().load(url, o => done(o, name), onP, () => fail(name));
   else if (e === 'obj') {
@@ -635,6 +845,7 @@ function loadFile(f) {
 // ---------- รายการโครงการ ----------
 // ถ้า repo ไม่ได้อยู่บน github.io (เช่น โดเมนของตัวเอง) ให้กรอก owner/repo ตรงนี้
 const CFG = {owner: '', repo: '', branch: '', folder: 'models'};
+const dlMap = {};
 const MODEL_EXT = /\.(ifc|glb|gltf|fbx|obj)$/i;
 function guessRepo() {
   if (CFG.owner && CFG.repo) return CFG;
@@ -648,7 +859,7 @@ async function listModels() {
   if (gh) {
     try {
       const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/contents/${gh.folder}` + (gh.branch ? `?ref=${gh.branch}` : ''));
-      if (r.ok) names = (await r.json()).filter(f => f.type === 'file' && MODEL_EXT.test(f.name)).map(f => f.name);
+      if (r.ok) { const j = (await r.json()).filter(f => f.type === 'file' && MODEL_EXT.test(f.name)); j.forEach(f => dlMap[f.name] = f.download_url); names = j.map(f => f.name); }
     } catch {}
   }
   if (!names) { // สำรอง: models/index.json  ["a.ifc","b.fbx"]
@@ -688,6 +899,7 @@ $('b-axis').onclick = () => {
   if (sec.on) setSection(true);
 };
 $('b-sec').onclick = () => setSection(!sec.on);
+$('b-tag').onclick = () => { setPressed('b-tag', !isOn('b-tag')); updateTag(); };
 $('b-wire').onclick = () => {
   const on = !isOn('b-wire'); setPressed('b-wire', on);
   model && model.traverse(o => o.isMesh && matsOf(o).forEach(mm => mm.wireframe = on));
@@ -707,9 +919,12 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), .05);
   if (model) stepZoom(dt);
+  stepSnap();
   controls.update();
   updateNearFar();
   if (sec.on) scaleHandles();
+  updateTag();
+  drawGizmo();
   renderer.render(scene, camera);
 });
 </script>
