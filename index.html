@@ -126,7 +126,7 @@ async function parseIfc(THREE, api, WebIFC, data) {
   if (modelID < 0) throw new Error('open failed');
   const groups = new Map(); // colorKey -> {color, opacity, pos:[], nor:[], idx:[], ids:[], vcount, ranges}
   const ranges = new Map(); // expressID -> [{key,start,count}]
-  let OX = null, OY = 0; // ย้ายจุดกำเนิดเฉพาะแกน X/Y (คงค่า Z จริงไว้ เพื่ออ่านค่าระดับ)
+  let OX = null, OZ = 0; // web-ifc ส่งออกเป็น Y-up: x = East, y = ความสูง(ระดับ), z = -North. ย้ายจุดกำเนิดเฉพาะแนวราบ คงค่า Y จริงไว้
   api.StreamAllMeshes(modelID, (mesh) => {
     const pid = mesh.expressID;
     const n = mesh.geometries.size();
@@ -145,11 +145,11 @@ async function parseIfc(THREE, api, WebIFC, data) {
       for (let v = 0; v < vc; v++) {
         const x = verts[v*6], y = verts[v*6+1], z = verts[v*6+2];
         const nx = verts[v*6+3], ny = verts[v*6+4], nz = verts[v*6+5];
-        const wx = m[0]*x + m[4]*y + m[8]*z  + m[12], wy = m[1]*x + m[5]*y + m[9]*z  + m[13];
-        if (OX === null) { OX = wx; OY = wy; }
+        const wx = m[0]*x + m[4]*y + m[8]*z  + m[12], wz = m[2]*x + m[6]*y + m[10]*z + m[14];
+        if (OX === null) { OX = wx; OZ = wz; }
         P[v*3]   = wx - OX;
-        P[v*3+1] = wy - OY;
-        P[v*3+2] = m[2]*x + m[6]*y + m[10]*z + m[14];
+        P[v*3+1] = m[1]*x + m[5]*y + m[9]*z  + m[13];
+        P[v*3+2] = wz - OZ;
         N[v*3]   = m[0]*nx + m[4]*ny + m[8]*nz;
         N[v*3+1] = m[1]*nx + m[5]*ny + m[9]*nz;
         N[v*3+2] = m[2]*nx + m[6]*ny + m[10]*nz;
@@ -182,7 +182,7 @@ async function parseIfc(THREE, api, WebIFC, data) {
     mesh.userData.ifcMesh = true;
     root.add(mesh); meshes.set(key, mesh);
   }
-  return { root, modelID, ranges, meshes, origin: [OX || 0, OY || 0] };
+  return { root, modelID, ranges, meshes, origin: [OX || 0, OZ || 0] };
 }
 
 // ค่าระดับจริง (เมตร) TOP/BOTTOM ของชิ้นส่วน จากพิกัด Z ของเมชใน IFC
@@ -192,17 +192,17 @@ const origIdx = (ifc, mesh) => {
   return ifc.orig.get(mesh);
 };
 function ifcBounds(ifc, id) {
-  let zmin = Infinity, zmax = -Infinity, xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  let zmin = Infinity, zmax = -Infinity, xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity; // zmin/zmax = ความสูง (แกน Y ของ three), ymin/ymax = แนวราบแกน Z
   for (const r of ifc.ranges.get(id) || []) {
     const mesh = ifc.meshes.get(r.key), geo = mesh.geometry, idx = origIdx(ifc, mesh), pos = geo.attributes.position.array;
     for (let k = r.start; k < r.start + r.count; k++) {
-      const v = idx[k] * 3, x = pos[v], y = pos[v+1], z = pos[v+2];
+      const v = idx[k] * 3, x = pos[v], z = pos[v+1], y = pos[v+2];
       if (z < zmin) zmin = z; if (z > zmax) zmax = z;
       if (x < xmin) xmin = x; if (x > xmax) xmax = x;
       if (y < ymin) ymin = y; if (y > ymax) ymax = y;
     }
   }
-  return zmin === Infinity ? null : { top: zmax, bot: zmin, cx: (xmin + xmax) / 2, cy: (ymin + ymax) / 2 };
+  return zmin === Infinity ? null : { top: zmax, bot: zmin, cx: (xmin + xmax) / 2, cz: (ymin + ymax) / 2 };
 }
 const fmtZ = v => (v >= 0 ? '+' : '') + v.toFixed(3);
 
@@ -408,10 +408,12 @@ function fit() {
 }
 
 // ---------- แกน X Y Z (มุมขวาล่าง) ----------
+let gizmoIfc = false; // IFC: X=East, Y=North(-Z ของ three), Z=Up(Y ของ three)
 const gz = $('gizmo'), gctx = gz.getContext('2d');
 const GAX = [{n: 'X', c: '#e5484d', v: new THREE.Vector3(1, 0, 0)}, {n: 'Y', c: '#30a46c', v: new THREE.Vector3(0, 1, 0)}, {n: 'Z', c: '#3e63dd', v: new THREE.Vector3(0, 0, 1)}];
 const gQm = new THREE.Quaternion(), gQc = new THREE.Quaternion(), gEnds = [];
 let gAnim = null;
+const IFC_MAP = {X: new THREE.Vector3(1, 0, 0), Y: new THREE.Vector3(0, 0, -1), Z: new THREE.Vector3(0, 1, 0)};
 function drawGizmo() {
   const W = gz.clientWidth, H = gz.clientHeight, dpr = Math.min(devicePixelRatio, 2);
   if (!W) return;
@@ -423,7 +425,7 @@ function drawGizmo() {
   const cx = W / 2, cy = H / 2, L = W * .34, R = W * .09;
   const items = [];
   for (const a of GAX) for (const sgn of [1, -1]) {
-    const d = a.v.clone().multiplyScalar(sgn).applyQuaternion(gQm), w = d.clone(); // ทิศในโลก
+    const d = (gizmoIfc ? IFC_MAP[a.n] : a.v).clone().multiplyScalar(sgn).applyQuaternion(gQm), w = d.clone(); // ทิศในโลก
     d.applyQuaternion(gQc);
     items.push({a, sgn, w, x: cx + d.x * L, y: cy - d.y * L, z: d.z});
   }
@@ -567,7 +569,7 @@ function buildTag(d) {
 function updateTag() {
   const t = $('tag');
   if (!sel || !isOn('b-tag') || !model) { t.style.display = 'none'; return; }
-  tagV.set(sel.cx, sel.cy, sel.top); sel.root.localToWorld(tagV); tagV.project(camera);
+  tagV.set(sel.cx, sel.top, sel.cz); sel.root.localToWorld(tagV); tagV.project(camera);
   if (tagV.z > 1 || tagV.z < -1) { t.style.display = 'none'; return; }
   const x = (tagV.x * .5 + .5) * innerWidth, y = (-tagV.y * .5 + .5) * innerHeight;
   t.style.display = 'block';
@@ -713,7 +715,7 @@ async function selectHit(hit) {
     }
     showInfo(i ? {title: i.name || i.cls, badge: i.cls, rows: i.rows, groups: i.groups} : {title: 'Express ID ' + id, rows: []});
     if (cur && cur.id === id) cur.name = (i && (i.name || i.cls)) || ('Express ID ' + id);
-    if (i) { sel = Object.assign({root: ifc.root}, bd || {cx: 0, cy: 0, top: 0}); buildTag({name: i.name || i.cls, desc: i.desc, top: bd && zTop, bot: bd && zBot, level: lv ? (lv.name || '-') + ' (' + fmtZ(lv.elev) + ')' : ''}); if (!bd) sel = null; }
+    if (i) { sel = Object.assign({root: ifc.root}, bd || {cx: 0, cz: 0, top: 0}); buildTag({name: i.name || i.cls, desc: i.desc, top: bd && zTop, bot: bd && zBot, level: lv ? (lv.name || '-') + ' (' + fmtZ(lv.elev) + ')' : ''}); if (!bd) sel = null; }
   } else {
     addOverlay(o, o.geometry);
     cur = {kind: 'obj', obj: o, name: o.name || (o.parent && o.parent.name) || 'Object'};
@@ -821,7 +823,7 @@ function disposeCurrent() {
 function show(obj, name, opts = {}) {
   disposeCurrent();
   model = obj; ifc = opts.ifc || null;
-  setPressed('b-wire', false); setPressed('b-axis', false); zup = false;
+  setPressed('b-wire', false); setPressed('b-axis', false); zup = false; gizmoIfc = !!opts.ifcAxes;
   model.traverse(o => { if (o.isMesh) matsOf(o).forEach(m => { m.side = THREE.DoubleSide; }); });
   scene.add(model);
   if (opts.zup) { zup = true; model.rotation.x = -Math.PI / 2; setPressed('b-axis', true); }
@@ -883,7 +885,7 @@ async function loadIfcBuffer(buf, name) {
     await new Promise(r => setTimeout(r, 60));
     const r = await parseIfc(THREE, api, WebIFC, new Uint8Array(buf));
     $('bar-progress').style.width = '0';
-    show(r.root, name, {zup: true, ifc: {api, WebIFC, modelID: r.modelID, ranges: r.ranges, meshes: r.meshes, root: r.root, index: null}});
+    show(r.root, name, {ifcAxes: true, ifc: {api, WebIFC, modelID: r.modelID, ranges: r.ranges, meshes: r.meshes, root: r.root, index: null}});
   } catch (e) {
     console.error(e); $('bar-progress').style.width = '0';
     msg('อ่านไฟล์ IFC ไม่ได้', String(e && e.message || e) + ' (เปิดด้วย F12 > Console เพื่อดูรายละเอียด)');
