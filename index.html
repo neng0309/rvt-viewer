@@ -62,6 +62,8 @@
   #gizmo{position:fixed;right:12px;bottom:12px;width:120px;height:120px;z-index:4;border-radius:14px;cursor:pointer;touch-action:none;
     background:var(--panel);backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18)}
   body.ui0 #gizmo{display:none}
+  #stat{position:fixed;left:12px;bottom:30px;font-size:12px;opacity:.8;pointer-events:none;white-space:pre-line}
+  body.ui0 #stat{display:none}
   #hint{position:fixed;left:12px;bottom:10px;font-size:12px;opacity:.7;pointer-events:none}
   #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;pointer-events:none}
   #msg b{font-size:20px} #msg span{opacity:.7;font-size:14px;max-width:420px;line-height:1.5}
@@ -98,6 +100,7 @@
 <canvas id="gizmo" title="แกนของโมเดล · คลิกปลายแกนเพื่อมองตามแกนนั้น (Z = Top view)"></canvas>
 <div id="tag"></div>
 <div id="hid" hidden></div>
+<div id="stat"></div>
 <div id="hint"></div>
 <div id="msg"><b>เลือกโครงการจากเมนูมุมขวาบน</b><span>โมเดลอ่านจากโฟลเดอร์ models ใน GitHub (รองรับ .ifc .fbx .obj .glb)</span></div>
 <div id="drop">วางไฟล์เพื่อดูตัวอย่าง</div>
@@ -174,9 +177,11 @@ async function parseIfc(THREE, api, WebIFC, data) {
     geo.setAttribute('normal', new THREE.BufferAttribute(cat(g.nor, Float32Array), 3));
     geo.setAttribute('expressId', new THREE.BufferAttribute(cat(g.ids, Float32Array), 1));
     geo.setIndex(new THREE.BufferAttribute(cat(g.idx, Uint32Array), 1));
+    // กระจกจาก Revit มักมี alpha = 0 (โปร่งใส 100%) ทำให้มองไม่เห็นเลย -> แสดงเป็นกระจกสีฟ้าอ่อนโปร่งแสง
+    const glass = g.c.w < 0.05;
     const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(g.c.x, g.c.y, g.c.z), roughness: .85, metalness: 0,
-      opacity: g.c.w, transparent: g.c.w < 0.99, depthWrite: g.c.w >= 0.99, side: THREE.DoubleSide
+      color: glass ? new THREE.Color(0.55, 0.78, 0.92) : new THREE.Color(g.c.x, g.c.y, g.c.z), roughness: glass ? .15 : .85, metalness: glass ? .1 : 0,
+      opacity: glass ? .38 : g.c.w, transparent: g.c.w < 0.99, depthWrite: g.c.w >= 0.99, side: THREE.DoubleSide
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.userData.ifcMesh = true;
@@ -821,7 +826,7 @@ function disposeCurrent() {
 }
 
 function show(obj, name, opts = {}) {
-  disposeCurrent();
+  disposeCurrent(); if (!opts.ifc) $('stat').textContent = '';
   model = obj; ifc = opts.ifc || null;
   setPressed('b-wire', false); setPressed('b-axis', false); zup = false; gizmoIfc = !!opts.ifcAxes;
   model.traverse(o => { if (o.isMesh) matsOf(o).forEach(m => { m.side = THREE.DoubleSide; }); });
@@ -885,6 +890,14 @@ async function loadIfcBuffer(buf, name) {
     await new Promise(r => setTimeout(r, 60));
     const r = await parseIfc(THREE, api, WebIFC, new Uint8Array(buf));
     $('bar-progress').style.width = '0';
+    try {
+      const cnt = t => { const v = api.GetLineIDsWithType(r.modelID, t), n = v.size(); let have = 0; const miss = [];
+        for (let i = 0; i < n; i++) { const id = v.get(i); if (r.ranges.has(id)) have++; else miss.push(id); } return {have, n, miss}; };
+      const D = cnt(WebIFC.IFCDOOR), Wn = cnt(WebIFC.IFCWINDOW);
+      window.__ifcMissing = {doors: D.miss, windows: Wn.miss};
+      $('stat').textContent = `IFC: ประตู ${D.have}/${D.n} · หน้าต่าง ${Wn.have}/${Wn.n} มีรูปทรง`;
+      console.log('ประตู/หน้าต่างที่ไม่มีรูปทรง (Express ID):', window.__ifcMissing);
+    } catch (e) { console.warn(e); }
     show(r.root, name, {ifcAxes: true, ifc: {api, WebIFC, modelID: r.modelID, ranges: r.ranges, meshes: r.meshes, root: r.root, index: null}});
   } catch (e) {
     console.error(e); $('bar-progress').style.width = '0';
