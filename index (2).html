@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D Model Viewer</title>
+<style>
+  :root{--bg1:#e9edf2;--bg2:#b9c3d0;--ink:#1d2733;--panel:rgba(255,255,255,.9);--accent:#1f6feb}
+  @media (prefers-color-scheme:dark){:root{--bg1:#2a3340;--bg2:#12171e;--ink:#e8edf3;--panel:rgba(28,34,42,.9);--accent:#6ea8ff}}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,"Noto Sans Thai",sans-serif;color:var(--ink);
+    background:linear-gradient(180deg,var(--bg1),var(--bg2))}
+  canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+  .bar{position:fixed;left:12px;top:10px;display:flex;flex-direction:column;gap:4px;padding:5px;
+    background:var(--panel);border-radius:12px;backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18)}
+  .tool{position:relative;width:38px;height:38px;border:0;background:transparent;color:inherit;border-radius:8px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0}
+  .tool svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tool:hover,.tool[aria-pressed=true]{background:rgba(127,127,127,.22)}
+  .tool[aria-pressed=true]{color:var(--accent)}
+  .tool:focus-visible{outline:2px solid var(--accent)}
+  .tool::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translateY(-50%);white-space:nowrap;
+    font-size:13px;padding:6px 10px;border-radius:7px;background:var(--ink);color:var(--bg1);opacity:0;pointer-events:none;transition:opacity .12s;z-index:5}
+  .tool:hover::after,.tool:focus-visible::after{opacity:1}
+  #pick{position:fixed;top:10px;right:12px;max-width:min(56vw,340px);min-width:180px;font:inherit;font-size:14px;color:var(--ink);
+    background:var(--panel);border:0;border-radius:10px;padding:9px 12px;backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.18);cursor:pointer}
+  #pick:focus-visible{outline:2px solid var(--accent)}
+  #pick:disabled{cursor:default;opacity:.75}
+  #info{position:fixed;right:12px;top:58px;width:min(340px,calc(100vw - 24px));max-height:calc(100vh - 150px);overflow:auto;
+    background:var(--panel);backdrop-filter:blur(8px);border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.18);font-size:13px;line-height:1.45}
+  #info[hidden]{display:none}
+  #info header{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;padding:12px 8px 8px 12px;position:sticky;top:0;background:var(--panel)}
+  #info-title{font-weight:600;font-size:14px;word-break:break-word}
+  #info-badge{display:inline-block;margin-top:4px;padding:1px 9px;border-radius:99px;background:rgba(31,111,235,.16);color:var(--accent);font-size:12px}
+  #info-close{border:0;background:transparent;color:inherit;font-size:20px;line-height:1;cursor:pointer;border-radius:6px;padding:2px 8px}
+  #info-close:hover{background:rgba(127,127,127,.22)}
+  .rows{display:grid;grid-template-columns:minmax(76px,36%) 1fr;gap:3px 10px;margin:0;padding:0 12px 10px}
+  .rows dt{opacity:.65}
+  .rows dd{margin:0;word-break:break-word}
+  #info details{border-top:1px solid rgba(127,127,127,.25)}
+  #info summary{cursor:pointer;padding:8px 12px;font-weight:600}
+  #info details .rows{padding-top:2px}
+  #hint{position:fixed;left:12px;bottom:10px;font-size:12px;opacity:.7;pointer-events:none}
+  #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;pointer-events:none}
+  #msg b{font-size:20px} #msg span{opacity:.7;font-size:14px;max-width:420px;line-height:1.5}
+  #drop{position:fixed;inset:12px;border:2px dashed var(--accent);border-radius:16px;display:none;align-items:center;justify-content:center;font-size:18px;background:rgba(31,111,235,.08)}
+  body.dragging #drop{display:flex}
+  #bar-progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);transition:width .15s;z-index:9}
+  body.ui0 .bar,body.ui0 #pick,body.ui0 #hint{display:none}
+  @media (max-width:600px){
+    #info{top:auto;bottom:12px;left:12px;right:12px;width:auto;max-height:45vh}
+    #hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="bar-progress"></div>
+<select id="pick" aria-label="เลือกโครงการ"><option>กำลังโหลดรายการ…</option></select>
+<div class="bar" id="bar">
+  <button class="tool" id="b-home" data-tip="รีเซ็ตมุมมอง" aria-label="รีเซ็ตมุมมอง"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+  <button class="tool" id="b-ortho" data-tip="มุมมองแบบ Orthographic (ไม่มีมุมมองลึก)" aria-label="Orthographic" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12"/><path d="M4 8l4-4h12v12l-4 4M16 8l4-4"/></svg></button>
+  <button class="tool" id="b-axis" data-tip="สลับแกน Z/Y (ถ้าโมเดลนอนตะแคง)" aria-label="สลับแกน Z/Y" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg></button>
+  <button class="tool" id="b-sec" data-tip="Section Box: ครอบโมเดล ลากจุดเพื่อรูดเข้า/ออก" aria-label="Section Box" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5" stroke-dasharray="3 2.4"/><path d="M12 8v8M9.5 10.5L12 8l2.5 2.5M9.5 13.5L12 16l2.5-2.5"/></svg></button>
+  <button class="tool" id="b-wire" data-tip="โหมดเส้นลวด (Wireframe)" aria-label="Wireframe" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <button class="tool" id="b-link" data-tip="คัดลอกลิงก์แชร์" aria-label="คัดลอกลิงก์แชร์"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
+</div>
+<aside id="info" hidden>
+  <header><div><div id="info-title"></div><span id="info-badge"></span></div><button id="info-close" aria-label="ปิด">×</button></header>
+  <div id="info-body"></div>
+</aside>
+<div id="hint"></div>
+<div id="msg"><b>เลือกโครงการจากเมนูมุมขวาบน</b><span>โมเดลอ่านจากโฟลเดอร์ models ใน GitHub (รองรับ .ifc .fbx .obj .glb)</span></div>
+<div id="drop">วางไฟล์เพื่อดูตัวอย่าง</div>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+import {FBXLoader} from 'three/addons/loaders/FBXLoader.js';
+import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
+import {MTLLoader} from 'three/addons/loaders/MTLLoader.js';
+
+const WEBIFC_BASE = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/';
+
+// ==IFC-START==
+// อ่านไฟล์ IFC -> THREE.Group (รวมเมชตามสี) + ตารางหา expressID จากสามเหลี่ยม
+async function parseIfc(THREE, api, WebIFC, data) {
+  const modelID = api.OpenModel(data, { COORDINATE_TO_ORIGIN: true });
+  if (modelID < 0) throw new Error('open failed');
+  const groups = new Map(); // colorKey -> {color, opacity, pos:[], nor:[], idx:[], ids:[], vcount, ranges}
+  const ranges = new Map(); // expressID -> [{key,start,count}]
+  api.StreamAllMeshes(modelID, (mesh) => {
+    const pid = mesh.expressID;
+    const n = mesh.geometries.size();
+    for (let i = 0; i < n; i++) {
+      const pg = mesh.geometries.get(i);
+      const c = pg.color;
+      const key = [c.x, c.y, c.z, c.w].map(v => v.toFixed(3)).join(',');
+      let g = groups.get(key);
+      if (!g) { g = { c, pos: [], nor: [], idx: [], ids: [], vcount: 0 }; groups.set(key, g); }
+      const geom = api.GetGeometry(modelID, pg.geometryExpressID);
+      const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const index = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
+      const m = pg.flatTransformation;
+      const vc = verts.length / 6;
+      const P = new Float32Array(vc * 3), N = new Float32Array(vc * 3), I = new Float32Array(vc).fill(pid);
+      for (let v = 0; v < vc; v++) {
+        const x = verts[v*6], y = verts[v*6+1], z = verts[v*6+2];
+        const nx = verts[v*6+3], ny = verts[v*6+4], nz = verts[v*6+5];
+        P[v*3]   = m[0]*x + m[4]*y + m[8]*z  + m[12];
+        P[v*3+1] = m[1]*x + m[5]*y + m[9]*z  + m[13];
+        P[v*3+2] = m[2]*x + m[6]*y + m[10]*z + m[14];
+        N[v*3]   = m[0]*nx + m[4]*ny + m[8]*nz;
+        N[v*3+1] = m[1]*nx + m[5]*ny + m[9]*nz;
+        N[v*3+2] = m[2]*nx + m[6]*ny + m[10]*nz;
+      }
+      const start = g.idx.reduce((s, a) => s + a.length, 0);
+      const I2 = new Uint32Array(index.length);
+      for (let k = 0; k < index.length; k++) I2[k] = index[k] + g.vcount;
+      g.pos.push(P); g.nor.push(N); g.ids.push(I); g.idx.push(I2); g.vcount += vc;
+      let r = ranges.get(pid); if (!r) ranges.set(pid, r = []);
+      const last = r[r.length - 1];
+      if (last && last.key === key && last.start + last.count === start) last.count += index.length;
+      else r.push({ key, start, count: index.length });
+      geom.delete();
+    }
+  });
+  const cat = (arrs, T) => { let L = 0; for (const a of arrs) L += a.length; const o = new T(L); let p = 0; for (const a of arrs) { o.set(a, p); p += a.length; } return o; };
+  const root = new THREE.Group();
+  const meshes = new Map();
+  for (const [key, g] of groups) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(cat(g.pos, Float32Array), 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(cat(g.nor, Float32Array), 3));
+    geo.setAttribute('expressId', new THREE.BufferAttribute(cat(g.ids, Float32Array), 1));
+    geo.setIndex(new THREE.BufferAttribute(cat(g.idx, Uint32Array), 1));
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(g.c.x, g.c.y, g.c.z), roughness: .85, metalness: 0,
+      opacity: g.c.w, transparent: g.c.w < 0.99, depthWrite: g.c.w >= 0.99, side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.ifcMesh = true;
+    root.add(mesh); meshes.set(key, mesh);
+  }
+  return { root, modelID, ranges, meshes };
+}
+
+// ข้อมูลชิ้นส่วน: ชนิด ชื่อ ชั้น Property Sets
+function ifcVal(x) {
+  if (x === null || x === undefined) return '';
+  if (typeof x === 'object' && 'value' in x) return ifcVal(x.value);
+  if (typeof x === 'boolean') return x ? 'ใช่' : 'ไม่ใช่';
+  if (typeof x === 'number') return Number.isInteger(x) ? String(x) : String(Math.round(x * 10000) / 10000);
+  return String(x);
+}
+function toArr(x) { return x == null ? [] : Array.isArray(x) ? x : [x]; }
+function refId(x) { return x && typeof x === 'object' && 'value' in x ? x.value : x; }
+
+function buildIfcIndex(api, WebIFC, modelID) {
+  const idx = { psets: new Map(), type: new Map(), storey: new Map() };
+  const add = (map, id, v) => { let a = map.get(id); if (!a) map.set(id, a = []); a.push(v); };
+  const lines = (t) => { try { const v = api.GetLineIDsWithType(modelID, t); const o = []; for (let i = 0; i < v.size(); i++) o.push(v.get(i)); return o; } catch { return []; } };
+  for (const id of lines(WebIFC.IFCRELDEFINESBYPROPERTIES)) {
+    const l = api.GetLine(modelID, id, false);
+    const def = refId(l.RelatingPropertyDefinition);
+    for (const o of toArr(l.RelatedObjects)) add(idx.psets, refId(o), def);
+  }
+  for (const id of lines(WebIFC.IFCRELDEFINESBYTYPE)) {
+    const l = api.GetLine(modelID, id, false);
+    const t = refId(l.RelatingType);
+    for (const o of toArr(l.RelatedObjects)) idx.type.set(refId(o), t);
+  }
+  for (const id of lines(WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE)) {
+    const l = api.GetLine(modelID, id, false);
+    const s = refId(l.RelatingStructure);
+    for (const o of toArr(l.RelatedElements)) idx.storey.set(refId(o), s);
+  }
+  return idx;
+}
+
+function getIfcInfo(api, modelID, id, idx) {
+  const L = (i, flat) => { try { return api.GetLine(modelID, i, !!flat); } catch { return null; } };
+  const el = L(id);
+  if (!el) return null;
+  const cls = api.GetNameFromTypeCode(el.type) || '';
+  const info = { cls, name: ifcVal(el.Name), rows: [], groups: [] };
+  const add = (k, v) => { v = ifcVal(v); if (v !== '') info.rows.push([k, v]); };
+  add('ชนิด', cls);
+  add('ชื่อ', el.Name);
+  add('คำอธิบาย', el.Description);
+  add('ObjectType', el.ObjectType);
+  add('Tag', el.Tag);
+  const t = idx.type.get(id);
+  if (t) { const tl = L(t); if (tl) add('Type', tl.Name); }
+  const s = idx.storey.get(id);
+  if (s) { const sl = L(s); if (sl) add('ชั้น/ตำแหน่ง', sl.LongName && ifcVal(sl.LongName) ? sl.LongName : sl.Name); }
+  add('GlobalId', el.GlobalId);
+  add('Express ID', id);
+  const typeDefs = [];
+  if (t) {
+    typeDefs.push(...(idx.psets.get(t) || []));
+    const tl = L(t); if (tl) for (const p of toArr(tl.HasPropertySets)) typeDefs.push(refId(p));
+  }
+  const seen = new Set();
+  const defs = [...(idx.psets.get(id) || []).map(d => [d, false]), ...typeDefs.map(d => [d, true])]
+    .filter(([d]) => !seen.has(d) && seen.add(d));
+  for (const [d, fromType] of defs) {
+    const p = L(d, true);
+    if (!p) continue;
+    const rows = [];
+    for (const pr of toArr(p.HasProperties)) {
+      const v = ifcVal(pr.NominalValue); if (pr.Name && v !== '') rows.push([ifcVal(pr.Name), v]);
+    }
+    for (const q of toArr(p.Quantities)) {
+      const key = Object.keys(q).find(k => /Value$/.test(k) && k !== 'NominalValue');
+      if (q.Name && key) { const v = ifcVal(q[key]); if (v !== '') rows.push([ifcVal(q.Name), v]); }
+    }
+    if (rows.length) info.groups.push({ name: (ifcVal(p.Name) || 'Properties') + (fromType ? ' (จาก Type)' : ''), rows });
+  }
+  return info;
+}
+
+
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+if (params.get('ui') === '0') document.body.classList.add('ui0');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const matsOf = o => Array.isArray(o.material) ? o.material : [o.material];
+const setPressed = (id, on) => $(id).setAttribute('aria-pressed', on ? 'true' : 'false');
+const isOn = id => $(id).getAttribute('aria-pressed') === 'true';
+$('hint').textContent = matchMedia('(pointer:coarse)').matches
+  ? '1 นิ้ว = หมุน · 2 นิ้ว = เลื่อน/ซูม · แตะ = ดูข้อมูล'
+  : 'ลาก = เลื่อน · Ctrl + ลาก = หมุน · ล้อเมาส์ = ซูม · คลิก = ดูข้อมูลชิ้นส่วน';
+
+function msg(title, sub) {
+  const m = $('msg'); m.style.display = 'flex'; m.replaceChildren();
+  const b = document.createElement('b'); b.textContent = title; m.append(b);
+  if (sub) { const s = document.createElement('span'); s.textContent = sub; m.append(s); }
+}
+const hideMsg = () => { $('msg').style.display = 'none'; };
+
+// ---------- scene ----------
+const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.localClippingEnabled = true;
+const canvas = renderer.domElement;
+document.body.prepend(canvas);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0x778899, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(5, 10, 7); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, .5); fill.position.set(-6, 3, -5); scene.add(fill);
+
+const persp = new THREE.PerspectiveCamera(45, 1, .01, 1000);
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -1e5, 1e5);
+let camera = persp, orthoHalf = 10;
+const halfTan = Math.tan(THREE.MathUtils.degToRad(persp.fov / 2));
+
+// ลาก = เลื่อน, Ctrl(หรือ Shift) + ลาก = หมุน, ล้อเมาส์ = ซูมแบบสมูท (จัดการเองด้านล่าง)
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.12;
+controls.screenSpacePanning = true; controls.minDistance = 0;
+controls.mouseButtons = {LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
+controls.touches = {ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN};
+
+let model = null, ifc = null, zup = false, box = new THREE.Box3(), size = 1;
+
+function resize() {
+  const w = innerWidth, h = innerHeight; renderer.setSize(w, h);
+  persp.aspect = w / h; persp.updateProjectionMatrix();
+  const a = w / h;
+  ortho.left = -orthoHalf * a; ortho.right = orthoHalf * a; ortho.top = orthoHalf; ortho.bottom = -orthoHalf;
+  ortho.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+function fit() {
+  const c = box.getCenter(new THREE.Vector3());
+  const d = size * 0.9;
+  persp.position.copy(c).addScaledVector(new THREE.Vector3(.8, .55, .8).normalize(), d);
+  ortho.position.copy(persp.position); ortho.zoom = 1;
+  orthoHalf = d * halfTan;
+  controls.target.copy(c);
+  controls.maxDistance = size * 30;
+  zoomAcc = 0;
+  camera.lookAt(c); controls.update(); resize();
+}
+
+function setOrtho(on) {
+  const t = controls.target.clone();
+  if (on) {
+    orthoHalf = persp.position.distanceTo(t) * halfTan; ortho.zoom = 1;
+    ortho.position.copy(persp.position); camera = ortho;
+  } else {
+    const dir = ortho.position.clone().sub(t).normalize();
+    persp.position.copy(t).addScaledVector(dir, (orthoHalf / ortho.zoom) / halfTan); camera = persp;
+  }
+  controls.object = camera; camera.lookAt(t); controls.update(); resize();
+}
+
+function updateNearFar() {
+  if (camera === persp) {
+    const d = persp.position.distanceTo(controls.target);
+    const near = Math.max(d * 0.01, size * 2e-5), far = d + size * 3;
+    if (Math.abs(near - persp.near) > near * .05 || Math.abs(far - persp.far) > far * .05) {
+      persp.near = near; persp.far = far; persp.updateProjectionMatrix();
+    }
+  } else if (ortho.far !== size * 10) { ortho.near = -size * 10; ortho.far = size * 10; ortho.updateProjectionMatrix(); }
+}
+
+// ---------- picking helpers ----------
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function setNDC(e) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+}
+function inSection(p) { return !sec.on || sec.planes.every(pl => pl.distanceToPoint(p) >= 0); }
+function firstHit() {
+  if (!model) return null;
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(model, true).filter(h => inSection(h.point));
+  // ข้ามกระจก/วัสดุโปร่งใสก่อน ถ้ามีวัตถุทึบอยู่ด้านหลัง
+  return hits.find(h => matsOf(h.object).every(m => m.opacity >= 0.5)) || hits[0] || null;
+}
+
+// ---------- ซูมสมูทตามตำแหน่งเมาส์ ----------
+let zoomAcc = 0, pivot = null, lastWheel = 0, pivotPx = {x: -99, y: -99};
+const pivotNDC = new THREE.Vector2();
+function planePoint() {
+  raycaster.setFromCamera(ndc, camera);
+  const n = camera.getWorldDirection(new THREE.Vector3());
+  const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, controls.target);
+  return raycaster.ray.intersectPlane(pl, new THREE.Vector3());
+}
+function onWheel(e) {
+  if (e.target !== canvas) return;
+  e.preventDefault(); e.stopPropagation();
+  if (!model) return;
+  let dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+  if (e.ctrlKey) dy *= 8; // pinch บนทัชแพด
+  zoomAcc = clamp(zoomAcc - dy * 0.0018, -1.6, 1.6);
+  const now = performance.now();
+  if (now - lastWheel > 220 || Math.hypot(e.clientX - pivotPx.x, e.clientY - pivotPx.y) > 8) {
+    setNDC(e); pivotNDC.copy(ndc); pivotPx = {x: e.clientX, y: e.clientY};
+    if (camera === persp) { const h = firstHit(); pivot = h ? h.point.clone() : planePoint(); }
+  }
+  lastWheel = now;
+}
+addEventListener('wheel', onWheel, {capture: true, passive: false});
+
+function stepZoom(dt) {
+  if (!zoomAcc) return;
+  let step = zoomAcc * (1 - Math.exp(-dt * 11));
+  zoomAcc -= step;
+  if (Math.abs(zoomAcc) < 1e-3) { step += zoomAcc; zoomAcc = 0; }
+  const f = Math.exp(-step); // < 1 = ซูมเข้า
+  if (camera === persp) {
+    const P = pivot || controls.target;
+    const d = persp.position.distanceTo(controls.target);
+    const ff = clamp(f, size * 5e-4 / d, size * 30 / d);
+    persp.position.sub(P).multiplyScalar(ff).add(P);
+    controls.target.sub(P).multiplyScalar(ff).add(P);
+  } else {
+    camera.updateMatrixWorld();
+    const before = new THREE.Vector3(pivotNDC.x, pivotNDC.y, 0).unproject(camera);
+    ortho.zoom = clamp(ortho.zoom / f, 0.02, 4000); ortho.updateProjectionMatrix();
+    const after = new THREE.Vector3(pivotNDC.x, pivotNDC.y, 0).unproject(camera);
+    const dlt = before.sub(after);
+    ortho.position.add(dlt); controls.target.add(dlt);
+  }
+}
+
+// ---------- highlight / info panel ----------
+const hlMat = new THREE.MeshBasicMaterial({color: 0xffb21e, transparent: true, opacity: .8, side: THREE.DoubleSide,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false});
+let hlObjs = [], ovCache = new Map(), selToken = 0;
+function clearHighlight() { hlObjs.forEach(o => o.parent && o.parent.remove(o)); hlObjs = []; }
+function addOverlay(parent, geo) {
+  const m = new THREE.Mesh(geo, hlMat); m.raycast = () => {}; m.renderOrder = 2;
+  parent.add(m); hlObjs.push(m);
+}
+function highlightIfc(id) {
+  let geos = ovCache.get(id);
+  if (!geos) {
+    geos = (ifc.ranges.get(id) || []).map(r => {
+      const src = ifc.meshes.get(r.key).geometry, g = new THREE.BufferGeometry();
+      g.setAttribute('position', src.attributes.position); g.setAttribute('normal', src.attributes.normal);
+      g.setIndex(new THREE.BufferAttribute(src.index.array.slice(r.start, r.start + r.count), 1));
+      return g;
+    });
+    ovCache.set(id, geos);
+  }
+  geos.forEach(g => addOverlay(ifc.root, g));
+}
+function rowsEl(rows) {
+  const dl = document.createElement('dl'); dl.className = 'rows';
+  for (const [k, v] of rows) {
+    const dt = document.createElement('dt'); dt.textContent = k;
+    const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd);
+  }
+  return dl;
+}
+function showInfo(info) {
+  $('info-title').textContent = info.title || '(ไม่มีชื่อ)';
+  const b = $('info-badge'); b.textContent = info.badge || ''; b.style.display = info.badge ? '' : 'none';
+  const body = $('info-body'); body.replaceChildren();
+  if (info.rows && info.rows.length) body.append(rowsEl(info.rows));
+  for (const g of info.groups || []) {
+    const d = document.createElement('details'); d.open = info.groups.length <= 3;
+    const s = document.createElement('summary'); s.textContent = g.name;
+    d.append(s, rowsEl(g.rows)); body.append(d);
+  }
+  $('info').hidden = false;
+}
+const hideInfo = () => { $('info').hidden = true; };
+$('info-close').onclick = () => { selToken++; clearHighlight(); hideInfo(); };
+
+function genericInfo(o) {
+  const path = []; for (let p = o; p && p !== model; p = p.parent) if (p.name) path.unshift(p.name);
+  const rows = [['ชื่อ', o.name || '(ไม่มีชื่อ)'], ['ชนิด', o.type]];
+  if (path.length > 1) rows.push(['ตำแหน่ง', path.join(' › ')]);
+  const g = o.geometry;
+  if (g) rows.push(['สามเหลี่ยม', String(Math.round((g.index ? g.index.count : g.attributes.position.count) / 3))]);
+  const ud = Object.assign({}, o.parent && o.parent.userData, o.userData);
+  const udRows = Object.entries(ud).filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v)).map(([k, v]) => [k, String(v)]);
+  return {title: o.name || (o.parent && o.parent.name) || 'Object', badge: o.type, rows, groups: udRows.length ? [{name: 'ข้อมูลเพิ่มเติม', rows: udRows}] : []};
+}
+
+async function selectHit(hit) {
+  const token = ++selToken;
+  clearHighlight();
+  if (!hit) { hideInfo(); return; }
+  const o = hit.object;
+  if (ifc && o.userData.ifcMesh) {
+    const id = o.geometry.attributes.expressId.getX(hit.face.a);
+    highlightIfc(id);
+    if (!ifc.index) {
+      showInfo({title: 'กำลังอ่านข้อมูล…', rows: []});
+      await new Promise(r => setTimeout(r, 30));
+      if (token !== selToken) return;
+      ifc.index = buildIfcIndex(ifc.api, ifc.WebIFC, ifc.modelID);
+    }
+    const i = getIfcInfo(ifc.api, ifc.modelID, id, ifc.index);
+    if (token !== selToken) return;
+    showInfo(i ? {title: i.name || i.cls, badge: i.cls, rows: i.rows, groups: i.groups} : {title: 'Express ID ' + id, rows: []});
+  } else {
+    addOverlay(o, o.geometry);
+    showInfo(genericInfo(o));
+  }
+}
+
+// คลิก (ไม่ลาก) = เลือกชิ้นส่วน
+let down = null;
+canvas.addEventListener('pointerdown', e => { down = e.button === 0 ? {x: e.clientX, y: e.clientY} : null; });
+canvas.addEventListener('pointerup', e => {
+  const d = down; down = null;
+  if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;
+  setNDC(e); selectHit(firstHit());
+});
+addEventListener('keydown', e => { if (e.key === 'Escape') { selToken++; clearHighlight(); hideInfo(); } });
+
+// ---------- Section Box ----------
+const AX = ['x', 'y', 'z'];
+const sec = {on: false, box: new THREE.Box3(), planes: [0, 1, 2, 3, 4, 5].map(() => new THREE.Plane()), handles: [], drag: null};
+const secGroup = new THREE.Group(); secGroup.visible = false; scene.add(secGroup);
+const secHelper = new THREE.Box3Helper(sec.box, 0x1f6feb);
+secHelper.material.depthTest = false; secHelper.renderOrder = 998; secGroup.add(secHelper);
+{
+  const geo = new THREE.SphereGeometry(1, 20, 14);
+  for (let i = 0; i < 6; i++) {
+    const h = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: 0x1f6feb, depthTest: false, transparent: true, opacity: .95}));
+    h.renderOrder = 999; h.userData = {axis: AX[i >> 1], sign: i & 1 ? -1 : 1};
+    sec.handles.push(h); secGroup.add(h);
+  }
+}
+function updateSection() {
+  const b = sec.box, P = sec.planes;
+  P[0].set(new THREE.Vector3(-1, 0, 0), b.max.x); P[1].set(new THREE.Vector3(1, 0, 0), -b.min.x);
+  P[2].set(new THREE.Vector3(0, -1, 0), b.max.y); P[3].set(new THREE.Vector3(0, 1, 0), -b.min.y);
+  P[4].set(new THREE.Vector3(0, 0, -1), b.max.z); P[5].set(new THREE.Vector3(0, 0, 1), -b.min.z);
+  const c = b.getCenter(new THREE.Vector3());
+  for (const h of sec.handles) { h.position.copy(c); h.position[h.userData.axis] = h.userData.sign > 0 ? b.max[h.userData.axis] : b.min[h.userData.axis]; }
+}
+function applyClipping() {
+  const planes = sec.on ? sec.planes : null;
+  const set = m => { m.clippingPlanes = planes; m.needsUpdate = true; };
+  if (model) model.traverse(o => { if (o.isMesh) matsOf(o).forEach(set); });
+  set(hlMat);
+}
+function setSection(on) {
+  if (on && !model) return;
+  sec.on = on; secGroup.visible = on; setPressed('b-sec', on);
+  if (on) { sec.box.copy(box).expandByScalar(size * 0.002); updateSection(); }
+  applyClipping();
+}
+function scaleHandles() {
+  const k = 9 / innerHeight; // รัศมีจุดจับ ~9px
+  for (const h of sec.handles) {
+    const world = camera === persp ? persp.position.distanceTo(h.position) * 2 * halfTan : 2 * orthoHalf / ortho.zoom;
+    h.scale.setScalar(world * k);
+  }
+}
+function axisT(p1, axis, ray) {
+  const d1 = new THREE.Vector3(); d1[axis] = 1;
+  const d2 = ray.direction, w = p1.clone().sub(ray.origin);
+  const b = d1.dot(d2), d = d1.dot(w), e = d2.dot(w), den = 1 - b * b;
+  return den < 1e-6 ? null : (b * e - d) / den;
+}
+function hitHandle(e) {
+  setNDC(e); raycaster.setFromCamera(ndc, camera);
+  return raycaster.intersectObjects(sec.handles, false)[0] || null;
+}
+addEventListener('pointerdown', e => {
+  if (!sec.on || e.target !== canvas || e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey) return;
+  const hit = hitHandle(e); if (!hit) return;
+  e.stopPropagation(); e.preventDefault();
+  const h = hit.object, {axis, sign} = h.userData, p1 = h.position.clone();
+  sec.drag = {h, axis, sign, p1, t0: axisT(p1, axis, raycaster.ray), v0: sec.box[sign > 0 ? 'max' : 'min'][axis]};
+  canvas.style.cursor = 'grabbing';
+}, true);
+addEventListener('pointermove', e => {
+  const d = sec.drag;
+  if (!d) { if (sec.on && e.target === canvas && e.buttons === 0) canvas.style.cursor = hitHandle(e) ? 'pointer' : ''; return; }
+  setNDC(e); raycaster.setFromCamera(ndc, camera);
+  const t = axisT(d.p1, d.axis, raycaster.ray); if (t === null || d.t0 === null) return;
+  const gap = size * 0.002, b = sec.box;
+  let v = d.v0 + (t - d.t0);
+  v = d.sign > 0 ? Math.max(v, b.min[d.axis] + gap) : Math.min(v, b.max[d.axis] - gap);
+  b[d.sign > 0 ? 'max' : 'min'][d.axis] = v;
+  updateSection();
+});
+addEventListener('pointerup', () => { if (sec.drag) { sec.drag = null; canvas.style.cursor = ''; } });
+
+// ---------- โหลดโมเดล ----------
+const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+const gltfLoader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder);
+
+function disposeCurrent() {
+  selToken++; clearHighlight(); hideInfo(); setSection(false);
+  if (model) {
+    scene.remove(model);
+    model.traverse(o => { if (o.isMesh) { o.geometry.dispose(); matsOf(o).forEach(m => m.dispose()); } });
+  }
+  ovCache.forEach(gs => gs.forEach(g => g.dispose())); ovCache = new Map();
+  if (ifc) { try { ifc.api.CloseModel(ifc.modelID); } catch {} }
+  model = null; ifc = null;
+}
+
+function show(obj, name, opts = {}) {
+  disposeCurrent();
+  model = obj; ifc = opts.ifc || null;
+  setPressed('b-wire', false); setPressed('b-axis', false); zup = false;
+  model.traverse(o => { if (o.isMesh) matsOf(o).forEach(m => { m.side = THREE.DoubleSide; }); });
+  scene.add(model);
+  if (opts.zup) { zup = true; model.rotation.x = -Math.PI / 2; setPressed('b-axis', true); }
+  model.updateMatrixWorld(true);
+  box.setFromObject(model);
+  if (box.isEmpty()) { msg('ไม่พบรูปทรง 3 มิติในไฟล์', name); return; }
+  size = box.getSize(new THREE.Vector3()).length() || 1;
+  hideMsg(); document.title = name + ' – 3D Viewer';
+  fit();
+}
+
+const ext = n => (n.split('?')[0].split('.').pop() || '').toLowerCase();
+const fail = name => { $('bar-progress').style.width = '0';
+  msg('เปิดโมเดลไม่ได้', 'ตรวจสอบว่าไฟล์ ' + name + ' อยู่ในโฟลเดอร์ models และพิมพ์ชื่อถูกต้อง (ตัวพิมพ์เล็ก/ใหญ่มีผล)'); };
+const prog = (got, total) => { if (total) $('bar-progress').style.width = Math.min(100, got / total * 100) + '%'; };
+const done = (o, name) => { $('bar-progress').style.width = '0'; show(o, name); };
+
+async function fetchBuf(url) {
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const total = +r.headers.get('content-length') || 0;
+  if (!r.body || !total) return r.arrayBuffer();
+  const rd = r.body.getReader(), chunks = []; let got = 0;
+  for (;;) { const {done, value} = await rd.read(); if (done) break; chunks.push(value); got += value.length; prog(got, total); }
+  const out = new Uint8Array(got); let p = 0; for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out.buffer;
+}
+
+let ifcApiP = null;
+function getIfcApi() {
+  if (!ifcApiP) ifcApiP = (async () => {
+    const WebIFC = await import(WEBIFC_BASE + 'web-ifc-api.js');
+    const api = new WebIFC.IfcAPI(); api.SetWasmPath(WEBIFC_BASE, true); await api.Init();
+    return {api, WebIFC};
+  })().catch(e => { ifcApiP = null; throw e; });
+  return ifcApiP;
+}
+async function loadIfcBuffer(buf, name) {
+  msg('กำลังอ่านไฟล์ IFC…', 'ไฟล์ใหญ่อาจใช้เวลาสักครู่ และหน้าเว็บอาจค้างชั่วคราว');
+  try {
+    const {api, WebIFC} = await getIfcApi();
+    await new Promise(r => setTimeout(r, 60));
+    const r = await parseIfc(THREE, api, WebIFC, new Uint8Array(buf));
+    $('bar-progress').style.width = '0';
+    show(r.root, name, {zup: true, ifc: {api, WebIFC, modelID: r.modelID, ranges: r.ranges, meshes: r.meshes, root: r.root, index: null}});
+  } catch (e) {
+    console.error(e); $('bar-progress').style.width = '0';
+    msg('อ่านไฟล์ IFC ไม่ได้', String(e && e.message || e));
+  }
+}
+
+function loadUrl(url) {
+  const name = decodeURIComponent(url.split('/').pop().split('?')[0]);
+  const e = ext(url);
+  if (e === 'ifc') { fetchBuf(url).then(b => loadIfcBuffer(b, name), () => fail(name)); return; }
+  const onP = ev => prog(ev.loaded, ev.total);
+  if (e === 'fbx') new FBXLoader().load(url, o => done(o, name), onP, () => fail(name));
+  else if (e === 'obj') {
+    const mtlUrl = url.replace(/\.obj(\?.*)?$/i, '.mtl');
+    const base = mtlUrl.substring(0, mtlUrl.lastIndexOf('/') + 1);
+    const go = mats => { const l = new OBJLoader(); if (mats) l.setMaterials(mats); l.load(url, o => done(o, name), onP, () => fail(name)); };
+    new MTLLoader().setResourcePath(base).load(mtlUrl, mats => { mats.preload(); go(mats); }, undefined, () => go(null));
+  } else gltfLoader.load(url, g => done(g.scene, name), onP, () => fail(name));
+}
+function loadFile(f) {
+  const e = ext(f.name);
+  if (!['glb', 'gltf', 'fbx', 'obj', 'ifc'].includes(e)) { alert('รองรับ .ifc .fbx .obj .glb .gltf'); return; }
+  if (e === 'ifc') { f.arrayBuffer().then(b => loadIfcBuffer(b, f.name)); return; }
+  const url = URL.createObjectURL(f), fin = o => { show(o, f.name); URL.revokeObjectURL(url); };
+  if (e === 'fbx') new FBXLoader().load(url, fin);
+  else if (e === 'obj') new OBJLoader().load(url, fin);
+  else gltfLoader.load(url, g => fin(g.scene));
+}
+
+// ---------- รายการโครงการ ----------
+// ถ้า repo ไม่ได้อยู่บน github.io (เช่น โดเมนของตัวเอง) ให้กรอก owner/repo ตรงนี้
+const CFG = {owner: '', repo: '', branch: '', folder: 'models'};
+const MODEL_EXT = /\.(ifc|glb|gltf|fbx|obj)$/i;
+function guessRepo() {
+  if (CFG.owner && CFG.repo) return CFG;
+  const h = location.hostname;
+  if (h.endsWith('.github.io')) return {...CFG, owner: h.split('.')[0], repo: location.pathname.split('/')[1] || h};
+  return null;
+}
+async function listModels() {
+  let names = null;
+  const gh = guessRepo();
+  if (gh) {
+    try {
+      const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/contents/${gh.folder}` + (gh.branch ? `?ref=${gh.branch}` : ''));
+      if (r.ok) names = (await r.json()).filter(f => f.type === 'file' && MODEL_EXT.test(f.name)).map(f => f.name);
+    } catch {}
+  }
+  if (!names) { // สำรอง: models/index.json  ["a.ifc","b.fbx"]
+    try { names = (await (await fetch(`${CFG.folder}/index.json`, {cache: 'no-cache'})).json()).filter(n => MODEL_EXT.test(n)); }
+    catch { names = []; }
+  }
+  return names.sort((a, b) => a.localeCompare(b, 'th', {numeric: true, sensitivity: 'base'}));
+}
+const pathOf = n => `${CFG.folder}/${encodeURIComponent(n)}`;
+function chooseModel(name) {
+  const u = new URL(location.href); u.searchParams.set('model', pathOf(name));
+  history.replaceState(null, '', u);
+  msg('กำลังโหลดโมเดล…'); loadUrl(pathOf(name));
+}
+const m = params.get('model');
+(async () => {
+  const pick = $('pick'), names = await listModels();
+  pick.innerHTML = '';
+  if (!names.length) { pick.innerHTML = '<option>- ยังไม่มีโครงการ -</option>'; pick.disabled = true; return; }
+  const base = n => n.replace(MODEL_EXT, '');
+  const dup = new Set(names.map(base).filter((b, i, a) => a.indexOf(b) !== i));
+  const cur = m ? decodeURIComponent(m.split('/').pop()) : '';
+  if (!names.includes(cur)) { pick.add(new Option('เลือกโครงการ…', '', true, true)); pick.options[0].disabled = true; }
+  names.forEach(n => pick.add(new Option(dup.has(base(n)) ? n : base(n), n, false, n === cur)));
+  pick.onchange = () => chooseModel(pick.value);
+})();
+if (m) { msg('กำลังโหลดโมเดล…'); loadUrl(m); }
+
+// ---------- ปุ่ม ----------
+$('b-home').onclick = () => model && fit();
+$('b-ortho').onclick = () => { const on = !isOn('b-ortho'); setPressed('b-ortho', on); if (model) setOrtho(on); else camera = on ? ortho : persp, controls.object = camera; };
+$('b-axis').onclick = () => {
+  if (!model) return;
+  zup = !zup; setPressed('b-axis', zup);
+  model.rotation.x = zup ? -Math.PI / 2 : 0; model.updateMatrixWorld(true);
+  box.setFromObject(model); size = box.getSize(new THREE.Vector3()).length() || 1; fit();
+  if (sec.on) setSection(true);
+};
+$('b-sec').onclick = () => setSection(!sec.on);
+$('b-wire').onclick = () => {
+  const on = !isOn('b-wire'); setPressed('b-wire', on);
+  model && model.traverse(o => o.isMesh && matsOf(o).forEach(mm => mm.wireframe = on));
+};
+$('b-link').onclick = async e => {
+  const b = e.currentTarget;
+  try { await navigator.clipboard.writeText(location.href); b.dataset.tip = 'คัดลอกลิงก์แล้ว'; }
+  catch { prompt('คัดลอกลิงก์นี้', location.href); }
+  setTimeout(() => b.dataset.tip = 'คัดลอกลิงก์แชร์', 1600);
+};
+addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('dragging'); e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]); });
+
+resize();
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .05);
+  if (model) stepZoom(dt);
+  controls.update();
+  updateNearFar();
+  if (sec.on) scaleHandles();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
