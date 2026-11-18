@@ -236,7 +236,66 @@ function buildIfcIndex(api, WebIFC, modelID) {
     const s = refId(l.RelatingStructure);
     for (const o of toArr(l.RelatedElements)) idx.storey.set(refId(o), s);
   }
+  idx.parent = new Map();
+  for (const id of lines(WebIFC.IFCRELAGGREGATES)) {
+    const l = api.GetLine(modelID, id, false), p = refId(l.RelatingObject);
+    for (const o of toArr(l.RelatedObjects)) idx.parent.set(refId(o), p);
+  }
+  try { buildLevels(api, WebIFC, modelID, idx, lines); } catch (e) { console.warn('อ่าน Level ไม่ได้', e); idx.levels = new Map(); idx.shift0 = 0; }
   return idx;
+}
+
+// ---------- Level (IfcBuildingStorey) -> ระดับจริง ----------
+const SI_PREFIX = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: .1, CENTI: .01, MILLI: .001, MICRO: 1e-6, NANO: 1e-9 };
+function buildLevels(api, WebIFC, modelID, idx, lines) {
+  const L = (i, flat) => { try { return api.GetLine(modelID, i, !!flat); } catch { return null; } };
+  // หน่วยความยาวของโปรเจกต์ -> เมตร
+  let scale = 1;
+  const siScale = u => { const p = u && u.Prefix ? ifcVal(u.Prefix) : ''; return SI_PREFIX[p] || 1; };
+  let found = false;
+  for (const id of lines(WebIFC.IFCCONVERSIONBASEDUNIT)) {
+    const l = L(id, true); if (!l || ifcVal(l.UnitType) !== 'LENGTHUNIT') continue;
+    const cf = l.ConversionFactor, v = cf && cf.ValueComponent && refId(cf.ValueComponent);
+    if (typeof v === 'number') { scale = v * siScale(cf.UnitComponent); found = true; break; }
+  }
+  if (!found) for (const id of lines(WebIFC.IFCSIUNIT)) {
+    const l = L(id); if (l && ifcVal(l.UnitType) === 'LENGTHUNIT') { scale = siScale(l); break; }
+  }
+  // ความสูง (Z) ของ placement สะสมตามลำดับชั้น
+  const pz = (ref, d = 0) => {
+    if (ref == null || d > 40) return 0;
+    const p = L(refId(ref)); if (!p) return 0;
+    let z = 0;
+    const a = p.RelativePlacement != null && L(refId(p.RelativePlacement));
+    const loc = a && a.Location != null && L(refId(a.Location));
+    const c = loc && loc.Coordinates;
+    if (c && c.length > 2) z = +refId(c[2]) || 0;
+    return z + pz(p.PlacementRelTo, d + 1);
+  };
+  idx.levels = new Map(); idx.scale = scale;
+  const shifts = [];
+  for (const id of lines(WebIFC.IFCBUILDINGSTOREY)) {
+    const st = L(id); if (!st) continue;
+    const raw = refId(st.Elevation);
+    const placeZ = pz(st.ObjectPlacement) * scale;
+    const elev = typeof raw === 'number' ? raw * scale : placeZ;
+    const shift = elev - placeZ;           // ส่วนต่างระหว่างค่าระดับของ Level กับพิกัด Z ในเรขาคณิต
+    idx.levels.set(id, { name: ifcVal(st.LongName) || ifcVal(st.Name), elev, placeZ, shift });
+    shifts.push(shift);
+  }
+  shifts.sort((x, y) => x - y);
+  idx.shift0 = shifts.length ? shifts[Math.floor(shifts.length / 2)] : 0;
+}
+// หา Level ของชิ้นงาน (ผ่าน Containment หรือ Aggregates) แล้วคืนค่า shift
+function levelOf(idx, id) {
+  let cur = id;
+  for (let i = 0; i < 12 && cur != null; i++) {
+    const s = idx.storey.get(cur);
+    if (s != null && idx.levels && idx.levels.has(s)) return idx.levels.get(s);
+    if (idx.levels && idx.levels.has(cur)) return idx.levels.get(cur);
+    cur = idx.parent && idx.parent.get(cur);
+  }
+  return null;
 }
 
 function getIfcInfo(api, modelID, id, idx) {
@@ -501,6 +560,7 @@ function buildTag(d) {
   const b = document.createElement('b'); b.textContent = d.name || '(ไม่มีชื่อ)'; t.append(b);
   const row = (k, v) => { const r = document.createElement('div'); r.className = 'z';
     const a = document.createElement('span'), c = document.createElement('span'); a.textContent = k; c.textContent = v; r.append(a, c); t.append(r); };
+  if (d.level) row('Level', d.level);
   if (d.top !== undefined) { row('ระดับ TOP', fmtZ(d.top) + ' ม.'); row('ระดับ BOTTOM', fmtZ(d.bot) + ' ม.'); }
   const dd = document.createElement('div'); dd.className = 'd'; dd.textContent = 'Description: ' + (d.desc || '-'); t.append(dd);
 }
@@ -635,14 +695,25 @@ async function selectHit(hit) {
     }
     const i = getIfcInfo(ifc.api, ifc.modelID, id, ifc.index);
     if (token !== selToken) return;
-    const bd = ifcBounds(ifc, id);
+    const bd = ifcBounds(ifc, id), lv = levelOf(ifc.index, id);
+    let zTop, zBot;
+    if (bd) {
+      const sh = lv ? lv.shift : (ifc.index.shift0 || 0);
+      zTop = bd.top + sh; zBot = bd.bot + sh;
+    }
     if (i && bd) {
       const at = Math.max(1, i.rows.findIndex(r => r[0] === 'ชื่อ') + 1);
-      i.rows.splice(at, 0, ['ระดับ TOP (ม.)', fmtZ(bd.top)], ['ระดับ BOTTOM (ม.)', fmtZ(bd.bot)], ['ความสูง/หนา (ม.)', (bd.top - bd.bot).toFixed(3)]);
+      const add = [];
+      if (lv) add.push(['Level อ้างอิง', (lv.name || '-') + ' (' + fmtZ(lv.elev) + ' ม.)']);
+      else add.push(['Level อ้างอิง', 'ไม่พบ Level ของชิ้นงานนี้ (ใช้ค่าชดเชยรวม ' + fmtZ(ifc.index.shift0 || 0) + ')']);
+      add.push(['ระดับ TOP (ม.)', fmtZ(zTop)], ['ระดับ BOTTOM (ม.)', fmtZ(zBot)]);
+      if (lv) add.push(['TOP เทียบ Level (ม.)', fmtZ(zTop - lv.elev)], ['BOTTOM เทียบ Level (ม.)', fmtZ(zBot - lv.elev)]);
+      add.push(['ความสูง/หนา (ม.)', (zTop - zBot).toFixed(3)]);
+      i.rows.splice(at, 0, ...add);
     }
     showInfo(i ? {title: i.name || i.cls, badge: i.cls, rows: i.rows, groups: i.groups} : {title: 'Express ID ' + id, rows: []});
     if (cur && cur.id === id) cur.name = (i && (i.name || i.cls)) || ('Express ID ' + id);
-    if (i) { sel = Object.assign({root: ifc.root}, bd || {cx: 0, cy: 0, top: 0}); buildTag({name: i.name || i.cls, desc: i.desc, top: bd && bd.top, bot: bd && bd.bot}); if (!bd) sel = null; }
+    if (i) { sel = Object.assign({root: ifc.root}, bd || {cx: 0, cy: 0, top: 0}); buildTag({name: i.name || i.cls, desc: i.desc, top: bd && zTop, bot: bd && zBot, level: lv ? (lv.name || '-') + ' (' + fmtZ(lv.elev) + ')' : ''}); if (!bd) sel = null; }
   } else {
     addOverlay(o, o.geometry);
     cur = {kind: 'obj', obj: o, name: o.name || (o.parent && o.parent.name) || 'Object'};
